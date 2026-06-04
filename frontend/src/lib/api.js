@@ -1,7 +1,7 @@
 // All API calls go through here.
 // Token is stored in localStorage under "ns_token".
 
-const BASE = "/api";
+const BASE = import.meta.env.VITE_API_URL || "/api";
 
 function getToken() {
   return localStorage.getItem("ns_token");
