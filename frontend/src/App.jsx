@@ -13,6 +13,7 @@ import { ItemDetailPage } from "./pages/ItemDetailPage";
 import { MyItemsPage } from "./pages/MyItemsPage";
 import { RequestsPage } from "./pages/RequestsPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { LandingPage } from "./pages/LandingPage";
 
 function Protected({ children }) {
   const { currentUser, loading } = useApp();
@@ -40,15 +41,21 @@ function Shell() {
       {currentUser && <Navbar />}
       <main className="flex-1">
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
           <Route
             path="/"
+            element={
+              currentUser ? <Navigate to="/browse" replace /> : <LandingPage />
+            }
+          />
+          <Route
+            path="/browse"
             element={
               <Protected>
                 <BrowsePage />
               </Protected>
             }
           />
+          <Route path="/login" element={<LoginPage />} />
           <Route
             path="/item/:id"
             element={
