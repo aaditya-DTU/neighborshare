@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../lib/AppContext";
 import { api } from "../lib/api";
 import { Modal } from "../components/Modal";
 import { StarRating } from "../components/StarRating";
+import { MessageThread } from "../components/MessageThread";
 
 export function RequestsPage() {
   const { requests, currentUser } = useApp();
@@ -80,29 +81,33 @@ export function RequestsPage() {
 }
 
 const STATUS_STYLES = {
-  pending: "bg-amber-100 text-amber-800",
-  approved: "bg-blue-100 text-blue-800",
-  rejected: "bg-slate-200 text-slate-700",
+  pending:   "bg-amber-100 text-amber-800",
+  approved:  "bg-blue-100 text-blue-800",
+  rejected:  "bg-slate-200 text-slate-700",
   cancelled: "bg-slate-200 text-slate-700",
-  returned: "bg-emerald-100 text-emerald-800",
+  returned:  "bg-emerald-100 text-emerald-800",
 };
 
 function RequestRow({ req, mode }) {
   const { currentUser, approveRequest, rejectRequest, cancelRequest, returnItem, submitReview } = useApp();
   const navigate = useNavigate();
 
-  // item and counterparty are populated objects from the backend
-  const item = req.itemId;
+  const item         = req.itemId;
   const counterparty = mode === "incoming" ? req.borrowerId : req.ownerId;
 
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState("");
-  const [myReview, setMyReview] = useState(null);
+  // review state
+  const [reviewOpen, setReviewOpen]   = useState(false);
+  const [rating, setRating]           = useState(5);
+  const [comment, setComment]         = useState("");
+  const [myReview, setMyReview]       = useState(null);
   const [otherReview, setOtherReview] = useState(null);
   const [reviewsLoaded, setReviewsLoaded] = useState(false);
 
-  // Load reviews for this request when it's returned
+  // chat state
+  const [chatOpen, setChatOpen]       = useState(false);
+  const [unread, setUnread]           = useState(0);
+
+  // load reviews when returned
   useState(() => {
     if (req.status !== "returned" || reviewsLoaded) return;
     api.getReviewsForRequest(req._id).then((reviews) => {
@@ -112,11 +117,25 @@ function RequestRow({ req, mode }) {
     });
   });
 
+  // poll unread count for active requests
+  useEffect(() => {
+    const active = req.status === "pending" || req.status === "approved";
+    if (!active) return;
+
+    const fetchUnread = () =>
+      api.getUnreadCount(req._id)
+        .then(({ count }) => setUnread(count))
+        .catch(() => {});
+
+    fetchUnread();
+    const id = setInterval(fetchUnread, 10000);
+    return () => clearInterval(id);
+  }, [req._id, req.status]);
+
   if (!item || !counterparty) return null;
 
   const handleSubmitReview = async () => {
     await submitReview(req._id, rating, comment);
-    // Refetch reviews for this request
     const reviews = await api.getReviewsForRequest(req._id);
     setMyReview(reviews.find((r) => (r.reviewerId?._id || r.reviewerId) === currentUser._id) || null);
     setOtherReview(reviews.find((r) => (r.reviewerId?._id || r.reviewerId) !== currentUser._id) || null);
@@ -124,6 +143,8 @@ function RequestRow({ req, mode }) {
     setComment("");
     setRating(5);
   };
+
+  const showChat = req.status === "pending" || req.status === "approved";
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -181,10 +202,31 @@ function RequestRow({ req, mode }) {
           {req.status === "returned" && myReview && (
             <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">✓ Reviewed</span>
           )}
+
+          {/* ── Chat button ── */}
+          {showChat && (
+            <button
+              onClick={() => {
+                setChatOpen(true);
+                setUnread(0);
+              }}
+              className="btn-secondary relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              Chat
+              {unread > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                  {unread}
+                </span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Reviews shown */}
+      {/* Reviews */}
       {(myReview || otherReview) && (
         <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -200,6 +242,7 @@ function RequestRow({ req, mode }) {
         </div>
       )}
 
+      {/* Review modal */}
       <Modal open={reviewOpen} onClose={() => setReviewOpen(false)} title={`Review ${counterparty.name}`}>
         <div className="space-y-4">
           <div className="text-center">
@@ -215,11 +258,18 @@ function RequestRow({ req, mode }) {
             placeholder="Optional comment..."
             className="textarea"
           />
-          <button onClick={handleSubmitReview} className="btn-primary w-full">
-            Submit Review
-          </button>
+          <button onClick={handleSubmitReview} className="btn-primary w-full">Submit Review</button>
         </div>
       </Modal>
+
+      {/* Chat modal */}
+      <MessageThread
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        requestId={req._id}
+        counterparty={counterparty}
+        itemTitle={item.title}
+      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import itemRoutes from "./routes/items.js";
 import requestRoutes from "./routes/requests.js";
 import reviewRoutes from "./routes/reviews.js";
 import notificationRoutes from "./routes/notifications.js";
+import messageRoutes from "./routes/messages.js";
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.use("/api/items", itemRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/messages", messageRoutes);
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 

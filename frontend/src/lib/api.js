@@ -1,7 +1,8 @@
 // All API calls go through here.
 // Token is stored in localStorage under "ns_token".
 
-const BASE = import.meta.env.VITE_API_URL || "/api";
+// const BASE = import.meta.env.VITE_API_URL || "/api";
+const BASE = "http://localhost:5000/api";
 
 function getToken() {
   return localStorage.getItem("ns_token");
@@ -52,4 +53,9 @@ export const api = {
   // Notifications
   getNotifications: () => request("GET", "/notifications"),
   markNotificationsRead: () => request("PATCH", "/notifications/read-all"),
+
+  // Messages
+  getMessages: (requestId) => request("GET", `/messages/${requestId}`),
+  sendMessage: (requestId, text) => request("POST", `/messages/${requestId}`, { text }),
+  getUnreadCount: (requestId) => request("GET", `/messages/${requestId}/unread`),
 };
