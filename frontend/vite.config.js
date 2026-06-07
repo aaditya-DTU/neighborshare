@@ -16,8 +16,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // "/api":"https://neighborshare-eejz.onrender.com",
-      "/api": "http://localhost:5000",
+      "/api":"https://neighborshare-eejz.onrender.com",
+      // "/api": "http://localhost:5000",
 
     },
   },
