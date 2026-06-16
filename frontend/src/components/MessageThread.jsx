@@ -1,7 +1,31 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { getSocket } from "../lib/socket";
 import { useApp } from "../lib/AppContext";
 import { Modal } from "./Modal";
+
+function formatDateLabel(dateStr) {
+  const date = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+}
+
+function DateSeparator({ label }) {
+  return (
+    <div className="flex items-center gap-3 py-1">
+      <div className="h-px flex-1 bg-slate-200" />
+      <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-400">
+        {label}
+      </span>
+      <div className="h-px flex-1 bg-slate-200" />
+    </div>
+  );
+}
 
 export function MessageThread({ open, onClose, requestId, counterparty, itemTitle }) {
   const { currentUser } = useApp();
@@ -10,46 +34,91 @@ export function MessageThread({ open, onClose, requestId, counterparty, itemTitl
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const bottomRef = useRef(null);
-  const pollRef = useRef(null);
 
-  // fetch messages when modal opens
   useEffect(() => {
     if (!open || !requestId) return;
 
-    const load = async () => {
-      try {
-        const data = await api.getMessages(requestId);
-        setMessages(data);
-      } catch (err) {
-        setError(err.message);
-      }
+    const socket = getSocket();
+
+    api.getMessages(requestId)
+      .then(setMessages)
+      .catch((err) => setError(err.message));
+
+    socket?.emit("join_request", { requestId });
+
+    const handleNewMessage = (msg) => {
+      const isMyMessage = (msg.senderId?._id || msg.senderId) === currentUser._id;
+
+      setMessages((prev) => {
+        if (isMyMessage) {
+          if (prev.find((m) => m._id === msg._id)) return prev;
+          const hasOptimistic = prev.find((m) => m._optimistic);
+          if (hasOptimistic) return prev.map((m) => (m._optimistic ? msg : m));
+          return [...prev, msg];
+        }
+        if (prev.find((m) => m._id === msg._id)) return prev;
+        return [...prev, msg];
+      });
     };
 
-    load();
+    socket?.on("new_message", handleNewMessage);
 
-    // poll every 5 s while chat is open
-    pollRef.current = setInterval(load, 5000);
-    return () => clearInterval(pollRef.current);
-  }, [open, requestId]);
+    return () => {
+      socket?.emit("leave_request", { requestId });
+      socket?.off("new_message", handleNewMessage);
+    };
+  }, [open, requestId, currentUser._id]);
 
-  // scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = async () => {
+  const handleSend = () => {
     if (!text.trim() || sending) return;
+
+    const socket = getSocket();
+    if (!socket?.connected) {
+      setError("Not connected. Please refresh.");
+      return;
+    }
+
     setSending(true);
     setError(null);
-    try {
-      const msg = await api.sendMessage(requestId, text.trim());
-      setMessages((prev) => [...prev, msg]);
-      setText("");
-    } catch (err) {
-      setError(err.message);
-    } finally {
+
+    const optimisticId = `temp_${Date.now()}`;
+    const optimistic = {
+      _id: optimisticId,
+      requestId,
+      senderId: {
+        _id: currentUser._id,
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+      },
+      text: text.trim(),
+      createdAt: new Date().toISOString(),
+      _optimistic: true,
+    };
+
+    setMessages((prev) => [...prev, optimistic]);
+    const sentText = text.trim();
+    setText("");
+
+    socket.emit("send_message", { requestId, text: sentText }, (ack) => {
       setSending(false);
-    }
+
+      if (ack?.error) {
+        setError(ack.error);
+        setMessages((prev) => prev.filter((m) => m._id !== optimisticId));
+        setText(sentText);
+        return;
+      }
+
+      if (ack?.message) {
+        setMessages((prev) =>
+          prev.map((m) => (m._id === optimisticId ? ack.message : m))
+        );
+      }
+    });
   };
 
   const handleKeyDown = (e) => {
@@ -63,9 +132,21 @@ export function MessageThread({ open, onClose, requestId, counterparty, itemTitl
     setMessages([]);
     setText("");
     setError(null);
-    clearInterval(pollRef.current);
     onClose();
   };
+
+  // build a renderable list with date separators injected between messages
+  const renderItems = [];
+  let lastDateLabel = null;
+
+  messages.forEach((msg) => {
+    const label = formatDateLabel(msg.createdAt);
+    if (label !== lastDateLabel) {
+      renderItems.push({ type: "separator", label, key: `sep_${label}` });
+      lastDateLabel = label;
+    }
+    renderItems.push({ type: "message", msg, key: msg._id });
+  });
 
   return (
     <Modal
@@ -76,14 +157,19 @@ export function MessageThread({ open, onClose, requestId, counterparty, itemTitl
     >
       <div className="flex flex-col" style={{ height: "420px" }}>
 
-        {/* counterparty info strip */}
+        {/* counterparty strip */}
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm">
             {counterparty?.avatar}
           </span>
           <div className="text-xs text-slate-500">
-            Chatting with <span className="font-semibold text-slate-700">{counterparty?.name}</span>
+            Chatting with{" "}
+            <span className="font-semibold text-slate-700">{counterparty?.name}</span>
           </div>
+          <span className="ml-auto flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Live
+          </span>
         </div>
 
         {/* message list */}
@@ -93,23 +179,30 @@ export function MessageThread({ open, onClose, requestId, counterparty, itemTitl
               No messages yet. Say hi! 👋
             </div>
           )}
-          {messages.map((msg) => {
+
+          {renderItems.map((item) => {
+            if (item.type === "separator") {
+              return <DateSeparator key={item.key} label={item.label} />;
+            }
+
+            const { msg } = item;
             const isMe = (msg.senderId?._id || msg.senderId) === currentUser._id;
+
             return (
               <div
                 key={msg._id}
                 className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}
               >
-                {/* avatar — only for other person */}
                 {!isMe && (
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm">
                     {msg.senderId?.avatar}
                   </span>
                 )}
-
-                <div className={`max-w-[72%] ${isMe ? "items-end" : "items-start"} flex flex-col gap-1`}>
+                <div className={`max-w-[72%] flex flex-col gap-1 ${isMe ? "items-end" : "items-start"}`}>
                   <div
-                    className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                    className={`rounded-2xl px-3 py-2 text-sm leading-relaxed transition-opacity ${
+                      msg._optimistic ? "opacity-60" : "opacity-100"
+                    } ${
                       isMe
                         ? "rounded-br-sm bg-gradient-to-br from-emerald-600 to-teal-600 text-white"
                         : "rounded-bl-sm bg-slate-100 text-slate-800"
@@ -118,21 +211,29 @@ export function MessageThread({ open, onClose, requestId, counterparty, itemTitl
                     {msg.text}
                   </div>
                   <span className="text-[10px] text-slate-400">
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {msg._optimistic
+                      ? "Sending…"
+                      : new Date(msg.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                   </span>
                 </div>
               </div>
             );
           })}
+
           <div ref={bottomRef} />
         </div>
 
         {/* error */}
         {error && (
-          <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>
+          <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            {error}
+          </div>
         )}
 
-        {/* input row */}
+        {/* input */}
         <div className="mt-3 flex items-end gap-2 border-t border-slate-100 pt-3">
           <textarea
             value={text}
@@ -149,7 +250,7 @@ export function MessageThread({ open, onClose, requestId, counterparty, itemTitl
           >
             {sending ? (
               <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round"/>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" strokeLinecap="round" />
               </svg>
             ) : (
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../lib/AppContext";
 import { api } from "../lib/api";
+import { getSocket } from "../lib/socket";
 import { Modal } from "../components/Modal";
 import { StarRating } from "../components/StarRating";
 import { MessageThread } from "../components/MessageThread";
@@ -9,6 +10,21 @@ import { MessageThread } from "../components/MessageThread";
 export function RequestsPage() {
   const { requests, currentUser } = useApp();
   const [tab, setTab] = useState("incoming");
+  // map of requestId → unread count, driven by socket unread_ping
+  const [unreadMap, setUnreadMap] = useState({});
+
+  // listen for unread_ping events at the page level
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleUnreadPing = ({ requestId, count }) => {
+      setUnreadMap((prev) => ({ ...prev, [requestId]: count }));
+    };
+
+    socket.on("unread_ping", handleUnreadPing);
+    return () => socket.off("unread_ping", handleUnreadPing);
+  }, []);
 
   if (!currentUser) return null;
 
@@ -30,6 +46,10 @@ export function RequestsPage() {
 
   const list = tab === "incoming" ? incoming : outgoing;
   const pendingIn = incoming.filter((r) => r.status === "pending").length;
+
+  const clearUnread = (requestId) => {
+    setUnreadMap((prev) => ({ ...prev, [requestId]: 0 }));
+  };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -72,7 +92,13 @@ export function RequestsPage() {
       ) : (
         <div className="space-y-3">
           {list.map((req) => (
-            <RequestRow key={req._id} req={req} mode={tab} />
+            <RequestRow
+              key={req._id}
+              req={req}
+              mode={tab}
+              unread={unreadMap[req._id] || 0}
+              onChatOpen={() => clearUnread(req._id)}
+            />
           ))}
         </div>
       )}
@@ -88,26 +114,21 @@ const STATUS_STYLES = {
   returned:  "bg-emerald-100 text-emerald-800",
 };
 
-function RequestRow({ req, mode }) {
+function RequestRow({ req, mode, unread, onChatOpen }) {
   const { currentUser, approveRequest, rejectRequest, cancelRequest, returnItem, submitReview } = useApp();
   const navigate = useNavigate();
 
   const item         = req.itemId;
   const counterparty = mode === "incoming" ? req.borrowerId : req.ownerId;
 
-  // review state
-  const [reviewOpen, setReviewOpen]   = useState(false);
-  const [rating, setRating]           = useState(5);
-  const [comment, setComment]         = useState("");
-  const [myReview, setMyReview]       = useState(null);
-  const [otherReview, setOtherReview] = useState(null);
+  const [reviewOpen, setReviewOpen]       = useState(false);
+  const [rating, setRating]               = useState(5);
+  const [comment, setComment]             = useState("");
+  const [myReview, setMyReview]           = useState(null);
+  const [otherReview, setOtherReview]     = useState(null);
   const [reviewsLoaded, setReviewsLoaded] = useState(false);
+  const [chatOpen, setChatOpen]           = useState(false);
 
-  // chat state
-  const [chatOpen, setChatOpen]       = useState(false);
-  const [unread, setUnread]           = useState(0);
-
-  // load reviews when returned
   useState(() => {
     if (req.status !== "returned" || reviewsLoaded) return;
     api.getReviewsForRequest(req._id).then((reviews) => {
@@ -116,21 +137,6 @@ function RequestRow({ req, mode }) {
       setReviewsLoaded(true);
     });
   });
-
-  // poll unread count for active requests
-  useEffect(() => {
-    const active = req.status === "pending" || req.status === "approved";
-    if (!active) return;
-
-    const fetchUnread = () =>
-      api.getUnreadCount(req._id)
-        .then(({ count }) => setUnread(count))
-        .catch(() => {});
-
-    fetchUnread();
-    const id = setInterval(fetchUnread, 10000);
-    return () => clearInterval(id);
-  }, [req._id, req.status]);
 
   if (!item || !counterparty) return null;
 
@@ -203,12 +209,12 @@ function RequestRow({ req, mode }) {
             <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">✓ Reviewed</span>
           )}
 
-          {/* ── Chat button ── */}
+          {/* ── Chat button with socket-driven unread badge ── */}
           {showChat && (
             <button
               onClick={() => {
                 setChatOpen(true);
-                setUnread(0);
+                onChatOpen();
               }}
               className="btn-secondary relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"
             >

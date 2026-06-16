@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { api } from "./api";
+import { connectSocket, disconnectSocket } from "./socket";
 
 const AppContext = createContext(null);
 
@@ -14,15 +15,12 @@ export function AppProvider({ children }) {
   const [items, setItems] = useState([]);
   const [requests, setRequests] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true); // checking saved token on mount
+  const [loading, setLoading] = useState(true);
 
-  // On mount: restore session from saved token
+  // restore session on mount
   useEffect(() => {
     const token = localStorage.getItem("ns_token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+    if (!token) { setLoading(false); return; }
     api
       .me()
       .then(({ user }) => setCurrentUser(user))
@@ -30,7 +28,17 @@ export function AppProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  // Fetch shared data whenever user logs in
+  // connect / disconnect socket when auth state changes
+  useEffect(() => {
+    const token = localStorage.getItem("ns_token");
+    if (currentUser && token) {
+      connectSocket(token);
+    } else {
+      disconnectSocket();
+    }
+  }, [currentUser?._id]);
+
+  // fetch data whenever user logs in
   useEffect(() => {
     if (!currentUser) {
       setItems([]);
@@ -43,44 +51,30 @@ export function AppProvider({ children }) {
     refreshNotifications();
   }, [currentUser?._id]);
 
-  // ---- DATA REFRESHERS ----
+  // ── DATA REFRESHERS ──
   const refreshItems = useCallback(async () => {
-    try {
-      const data = await api.getItems();
-      setItems(data);
-    } catch (err) {
-      console.error("refreshItems:", err.message);
-    }
+    try { setItems(await api.getItems()); }
+    catch (err) { console.error("refreshItems:", err.message); }
   }, []);
 
   const refreshRequests = useCallback(async () => {
-    try {
-      const data = await api.getRequests();
-      setRequests(data);
-    } catch (err) {
-      console.error("refreshRequests:", err.message);
-    }
+    try { setRequests(await api.getRequests()); }
+    catch (err) { console.error("refreshRequests:", err.message); }
   }, []);
 
   const refreshNotifications = useCallback(async () => {
-    try {
-      const data = await api.getNotifications();
-      setNotifications(data);
-    } catch (err) {
-      console.error("refreshNotifications:", err.message);
-    }
+    try { setNotifications(await api.getNotifications()); }
+    catch (err) { console.error("refreshNotifications:", err.message); }
   }, []);
 
-  // ---- AUTH ----
+  // ── AUTH ──
   const login = async (email, password) => {
     try {
       const { token, user } = await api.login(email, password);
       localStorage.setItem("ns_token", token);
       setCurrentUser(user);
-      return null; // no error
-    } catch (err) {
-      return err.message;
-    }
+      return null;
+    } catch (err) { return err.message; }
   };
 
   const signup = async ({ name, email, password, label, lat, lng }) => {
@@ -89,51 +83,40 @@ export function AppProvider({ children }) {
       localStorage.setItem("ns_token", token);
       setCurrentUser(user);
       return null;
-    } catch (err) {
-      return err.message;
-    }
+    } catch (err) { return err.message; }
   };
 
   const logout = () => {
     localStorage.removeItem("ns_token");
+    disconnectSocket();
     setCurrentUser(null);
   };
 
-  // ---- ITEMS ----
+  // ── ITEMS ──
   const createItem = async (data) => {
     try {
-      const item = await api.createItem({
-        ...data,
-        location: currentUser.location,
-      });
+      const item = await api.createItem({ ...data, location: currentUser.location });
       setItems((prev) => [item, ...prev]);
-    } catch (err) {
-      console.error("createItem:", err.message);
-    }
+    } catch (err) { console.error("createItem:", err.message); }
   };
 
   const deleteItem = async (id) => {
     try {
       await api.deleteItem(id);
       setItems((prev) => prev.filter((i) => i._id !== id));
-    } catch (err) {
-      console.error("deleteItem:", err.message);
-    }
+    } catch (err) { console.error("deleteItem:", err.message); }
   };
 
-  // ---- REQUESTS ----
+  // ── REQUESTS ──
   const createRequest = async (itemId, message, durationDays) => {
     try {
       const req = await api.createRequest({ itemId, message, durationDays });
       setRequests((prev) => [req, ...prev]);
-      // mark item unavailable locally so UI updates immediately
       setItems((prev) =>
         prev.map((i) => (i._id === itemId ? { ...i, available: false } : i))
       );
       return null;
-    } catch (err) {
-      return err.message;
-    }
+    } catch (err) { return err.message; }
   };
 
   const approveRequest = async (id) => {
@@ -146,9 +129,7 @@ export function AppProvider({ children }) {
         )
       );
       await refreshNotifications();
-    } catch (err) {
-      console.error("approveRequest:", err.message);
-    }
+    } catch (err) { console.error("approveRequest:", err.message); }
   };
 
   const rejectRequest = async (id) => {
@@ -156,18 +137,14 @@ export function AppProvider({ children }) {
       const updated = await api.rejectRequest(id);
       setRequests((prev) => prev.map((r) => (r._id === id ? updated : r)));
       await refreshNotifications();
-    } catch (err) {
-      console.error("rejectRequest:", err.message);
-    }
+    } catch (err) { console.error("rejectRequest:", err.message); }
   };
 
   const cancelRequest = async (id) => {
     try {
       const updated = await api.cancelRequest(id);
       setRequests((prev) => prev.map((r) => (r._id === id ? updated : r)));
-    } catch (err) {
-      console.error("cancelRequest:", err.message);
-    }
+    } catch (err) { console.error("cancelRequest:", err.message); }
   };
 
   const returnItem = async (id) => {
@@ -180,63 +157,43 @@ export function AppProvider({ children }) {
         )
       );
       await refreshNotifications();
-    } catch (err) {
-      console.error("returnItem:", err.message);
-    }
+    } catch (err) { console.error("returnItem:", err.message); }
   };
 
-  // ---- REVIEWS ----
+  // ── REVIEWS ──
   const submitReview = async (requestId, rating, comment) => {
     try {
       await api.submitReview({ requestId, rating, comment });
-      // Refresh requests so the review badge shows up
       await refreshRequests();
       await refreshNotifications();
-      // Refresh current user so trust score updates on profile
       const { user } = await api.me();
       setCurrentUser(user);
-    } catch (err) {
-      console.error("submitReview:", err.message);
-    }
+    } catch (err) { console.error("submitReview:", err.message); }
   };
 
-  // ---- NOTIFICATIONS ----
+  // ── NOTIFICATIONS ──
   const markNotificationsRead = async () => {
     try {
       await api.markNotificationsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    } catch (err) {
-      console.error("markNotificationsRead:", err.message);
-    }
+    } catch (err) { console.error("markNotificationsRead:", err.message); }
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const value = {
-    currentUser,
-    items,
-    requests,
-    notifications,
-    unreadCount,
-    loading,
-    login,
-    signup,
-    logout,
-    createItem,
-    deleteItem,
-    createRequest,
-    approveRequest,
-    rejectRequest,
-    cancelRequest,
-    returnItem,
-    submitReview,
-    markNotificationsRead,
-    refreshItems,
-    refreshRequests,
-    refreshNotifications,
-  };
-
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={{
+      currentUser, items, requests, notifications, unreadCount, loading,
+      login, signup, logout,
+      createItem, deleteItem,
+      createRequest, approveRequest, rejectRequest, cancelRequest, returnItem,
+      submitReview,
+      markNotificationsRead,
+      refreshItems, refreshRequests, refreshNotifications,
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
 }
 
 export function useApp() {
