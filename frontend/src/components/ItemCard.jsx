@@ -27,10 +27,13 @@ export function ItemCard({ item }) {
   return (
     <button
       onClick={() => navigate(`/item/${item._id}`)}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+      className="group relative flex flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white text-left shadow-sm transition hover:-translate-y-1 hover:border-emerald-200 hover:shadow-xl active:translate-y-0"
     >
-      <div className="relative flex h-40 items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 text-7xl">
-        <span>{item.image}</span>
+      <div className="relative flex h-40 items-center justify-center overflow-hidden bg-gradient-to-br from-emerald-50 via-slate-50 to-teal-50 text-7xl">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.18),transparent_35%)]" />
+        <span className="relative transition duration-300 group-hover:scale-110">
+          {item.image}
+        </span>
         <span
           className={`absolute left-3 top-3 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
             categoryColors[item.category]
@@ -48,14 +51,16 @@ export function ItemCard({ item }) {
         <h3 className="line-clamp-1 text-base font-semibold text-slate-900 group-hover:text-emerald-700">
           {item.title}
         </h3>
-        <p className="line-clamp-2 text-sm text-slate-500">{item.description}</p>
+        <p className="line-clamp-2 text-sm text-slate-500">
+          {item.description}
+        </p>
         <div className="mt-auto flex items-center justify-between pt-2">
           <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-50 text-sm">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-100 text-sm ring-2 ring-white">
               {owner?.avatar}
             </span>
             <div className="leading-tight">
-              <div className="text-xs font-medium text-slate-700">
+              <div className="text-xs font-semibold text-slate-700">
                 {owner?.name?.split(" ")[0]}
               </div>
               <div className="flex items-center gap-1">

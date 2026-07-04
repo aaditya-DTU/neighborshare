@@ -33,7 +33,7 @@ export function RequestsPage() {
       requests
         .filter((r) => (r.ownerId?._id || r.ownerId) === currentUser._id)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-    [requests, currentUser]
+    [requests, currentUser],
   );
 
   const outgoing = useMemo(
@@ -41,7 +41,7 @@ export function RequestsPage() {
       requests
         .filter((r) => (r.borrowerId?._id || r.borrowerId) === currentUser._id)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-    [requests, currentUser]
+    [requests, currentUser],
   );
 
   const list = tab === "incoming" ? incoming : outgoing;
@@ -54,22 +54,32 @@ export function RequestsPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Borrow Requests</h1>
-        <p className="mt-1 text-sm text-slate-500">Track the full lifecycle of every borrow.</p>
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
+          Borrow Requests
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Track the full lifecycle of every borrow.
+        </p>
       </div>
 
       <div className="mb-4 flex gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         <button
           onClick={() => setTab("incoming")}
           className={`relative flex-1 rounded-lg py-2 text-sm font-medium transition ${
-            tab === "incoming" ? "bg-emerald-600 text-white shadow" : "text-slate-600 hover:bg-slate-50"
+            tab === "incoming"
+              ? "bg-emerald-600 text-white shadow"
+              : "text-slate-600 hover:bg-slate-50"
           }`}
         >
           Incoming
           {pendingIn > 0 && (
-            <span className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-              tab === "incoming" ? "bg-white text-emerald-700" : "bg-rose-500 text-white"
-            }`}>
+            <span
+              className={`ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                tab === "incoming"
+                  ? "bg-white text-emerald-700"
+                  : "bg-rose-500 text-white"
+              }`}
+            >
               {pendingIn}
             </span>
           )}
@@ -77,7 +87,9 @@ export function RequestsPage() {
         <button
           onClick={() => setTab("outgoing")}
           className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
-            tab === "outgoing" ? "bg-emerald-600 text-white shadow" : "text-slate-600 hover:bg-slate-50"
+            tab === "outgoing"
+              ? "bg-emerald-600 text-white shadow"
+              : "text-slate-600 hover:bg-slate-50"
           }`}
         >
           Outgoing
@@ -87,7 +99,9 @@ export function RequestsPage() {
       {list.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white p-12 text-center">
           <div className="mb-3 text-5xl">📬</div>
-          <h3 className="text-lg font-semibold text-slate-700">No {tab} requests</h3>
+          <h3 className="text-lg font-semibold text-slate-700">
+            No {tab} requests
+          </h3>
         </div>
       ) : (
         <div className="space-y-3">
@@ -107,44 +121,68 @@ export function RequestsPage() {
 }
 
 const STATUS_STYLES = {
-  pending:   "bg-amber-100 text-amber-800",
-  approved:  "bg-blue-100 text-blue-800",
-  rejected:  "bg-slate-200 text-slate-700",
+  pending: "bg-amber-100 text-amber-800",
+  approved: "bg-blue-100 text-blue-800",
+  rejected: "bg-slate-200 text-slate-700",
   cancelled: "bg-slate-200 text-slate-700",
-  returned:  "bg-emerald-100 text-emerald-800",
+  returned: "bg-emerald-100 text-emerald-800",
 };
 
 function RequestRow({ req, mode, unread, onChatOpen }) {
-  const { currentUser, approveRequest, rejectRequest, cancelRequest, returnItem, submitReview } = useApp();
+  const {
+    currentUser,
+    approveRequest,
+    rejectRequest,
+    cancelRequest,
+    returnItem,
+    submitReview,
+  } = useApp();
   const navigate = useNavigate();
 
-  const item         = req.itemId;
+  const item = req.itemId;
   const counterparty = mode === "incoming" ? req.borrowerId : req.ownerId;
 
-  const [reviewOpen, setReviewOpen]       = useState(false);
-  const [rating, setRating]               = useState(5);
-  const [comment, setComment]             = useState("");
-  const [myReview, setMyReview]           = useState(null);
-  const [otherReview, setOtherReview]     = useState(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState("");
+  const [myReview, setMyReview] = useState(null);
+  const [otherReview, setOtherReview] = useState(null);
   const [reviewsLoaded, setReviewsLoaded] = useState(false);
-  const [chatOpen, setChatOpen]           = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     if (req.status !== "returned" || reviewsLoaded) return;
+
     api.getReviewsForRequest(req._id).then((reviews) => {
-      setMyReview(reviews.find((r) => (r.reviewerId?._id || r.reviewerId) === currentUser._id) || null);
-      setOtherReview(reviews.find((r) => (r.reviewerId?._id || r.reviewerId) !== currentUser._id) || null);
+      setMyReview(
+        reviews.find(
+          (r) => (r.reviewerId?._id || r.reviewerId) === currentUser._id,
+        ) || null,
+      );
+      setOtherReview(
+        reviews.find(
+          (r) => (r.reviewerId?._id || r.reviewerId) !== currentUser._id,
+        ) || null,
+      );
       setReviewsLoaded(true);
     });
-  });
+  }, [req._id, req.status, reviewsLoaded, currentUser._id]);
 
   if (!item || !counterparty) return null;
 
   const handleSubmitReview = async () => {
     await submitReview(req._id, rating, comment);
     const reviews = await api.getReviewsForRequest(req._id);
-    setMyReview(reviews.find((r) => (r.reviewerId?._id || r.reviewerId) === currentUser._id) || null);
-    setOtherReview(reviews.find((r) => (r.reviewerId?._id || r.reviewerId) !== currentUser._id) || null);
+    setMyReview(
+      reviews.find(
+        (r) => (r.reviewerId?._id || r.reviewerId) === currentUser._id,
+      ) || null,
+    );
+    setOtherReview(
+      reviews.find(
+        (r) => (r.reviewerId?._id || r.reviewerId) !== currentUser._id,
+      ) || null,
+    );
     setReviewOpen(false);
     setComment("");
     setRating(5);
@@ -164,8 +202,12 @@ function RequestRow({ req, mode, unread, onChatOpen }) {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate font-semibold text-slate-800">{item.title}</h3>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${STATUS_STYLES[req.status]}`}>
+            <h3 className="truncate font-semibold text-slate-800">
+              {item.title}
+            </h3>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${STATUS_STYLES[req.status]}`}
+            >
               {req.status}
             </span>
           </div>
@@ -177,7 +219,9 @@ function RequestRow({ req, mode, unread, onChatOpen }) {
               </span>
             </span>
             <span>•</span>
-            <span>{req.durationDays} day{req.durationDays !== 1 ? "s" : ""}</span>
+            <span>
+              {req.durationDays} day{req.durationDays !== 1 ? "s" : ""}
+            </span>
             <span>•</span>
             <span>{new Date(req.createdAt).toLocaleDateString()}</span>
           </div>
@@ -192,21 +236,48 @@ function RequestRow({ req, mode, unread, onChatOpen }) {
         <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col">
           {mode === "incoming" && req.status === "pending" && (
             <>
-              <button onClick={() => approveRequest(req._id)} className="btn-primary px-3 py-1.5 text-xs">Approve</button>
-              <button onClick={() => rejectRequest(req._id)} className="btn-danger px-3 py-1.5 text-xs">Reject</button>
+              <button
+                onClick={() => approveRequest(req._id)}
+                className="btn-primary px-3 py-1.5 text-xs"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => rejectRequest(req._id)}
+                className="btn-danger px-3 py-1.5 text-xs"
+              >
+                Reject
+              </button>
             </>
           )}
           {mode === "outgoing" && req.status === "pending" && (
-            <button onClick={() => cancelRequest(req._id)} className="btn-secondary px-3 py-1.5 text-xs">Cancel</button>
+            <button
+              onClick={() => cancelRequest(req._id)}
+              className="btn-secondary px-3 py-1.5 text-xs"
+            >
+              Cancel
+            </button>
           )}
           {req.status === "approved" && (
-            <button onClick={() => returnItem(req._id)} className="btn-primary px-3 py-1.5 text-xs">Mark Returned</button>
+            <button
+              onClick={() => returnItem(req._id)}
+              className="btn-primary px-3 py-1.5 text-xs"
+            >
+              Mark Returned
+            </button>
           )}
           {req.status === "returned" && !myReview && (
-            <button onClick={() => setReviewOpen(true)} className="btn-secondary px-3 py-1.5 text-xs">⭐ Leave Review</button>
+            <button
+              onClick={() => setReviewOpen(true)}
+              className="btn-secondary px-3 py-1.5 text-xs"
+            >
+              ⭐ Leave Review
+            </button>
           )}
           {req.status === "returned" && myReview && (
-            <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">✓ Reviewed</span>
+            <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700">
+              ✓ Reviewed
+            </span>
           )}
 
           {/* ── Chat button with socket-driven unread badge ── */}
@@ -218,7 +289,15 @@ function RequestRow({ req, mode, unread, onChatOpen }) {
               }}
               className="btn-secondary relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"
             >
-              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                className="h-3.5 w-3.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
               Chat
@@ -236,7 +315,13 @@ function RequestRow({ req, mode, unread, onChatOpen }) {
       {(myReview || otherReview) && (
         <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-3">
           <div className="grid gap-3 sm:grid-cols-2">
-            {myReview && <ReviewBox label="Your review" rating={myReview.rating} comment={myReview.comment} />}
+            {myReview && (
+              <ReviewBox
+                label="Your review"
+                rating={myReview.rating}
+                comment={myReview.comment}
+              />
+            )}
             {otherReview && (
               <ReviewBox
                 label={`${counterparty.name?.split(" ")[0]}'s review`}
@@ -249,10 +334,16 @@ function RequestRow({ req, mode, unread, onChatOpen }) {
       )}
 
       {/* Review modal */}
-      <Modal open={reviewOpen} onClose={() => setReviewOpen(false)} title={`Review ${counterparty.name}`}>
+      <Modal
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        title={`Review ${counterparty.name}`}
+      >
         <div className="space-y-4">
           <div className="text-center">
-            <div className="text-sm text-slate-500">How was your experience?</div>
+            <div className="text-sm text-slate-500">
+              How was your experience?
+            </div>
             <div className="mt-3 flex justify-center">
               <StarRating value={rating} onChange={setRating} size="lg" />
             </div>
@@ -264,7 +355,9 @@ function RequestRow({ req, mode, unread, onChatOpen }) {
             placeholder="Optional comment..."
             className="textarea"
           />
-          <button onClick={handleSubmitReview} className="btn-primary w-full">Submit Review</button>
+          <button onClick={handleSubmitReview} className="btn-primary w-full">
+            Submit Review
+          </button>
         </div>
       </Modal>
 
@@ -284,7 +377,9 @@ function ReviewBox({ label, rating, comment }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          {label}
+        </div>
         <StarRating value={rating} size="sm" />
       </div>
       {comment && <p className="mt-1 text-sm text-slate-600">{comment}</p>}
